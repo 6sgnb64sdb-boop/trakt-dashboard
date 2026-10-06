@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Sandy's Trakt connection</title>
+<style>body{margin:0;background:#f3f5fa;color:#202c42;font:17px/1.6 system-ui,sans-serif}main{max-width:650px;margin:8vh auto;padding:36px;background:white;border-radius:18px;box-shadow:0 12px 45px #202c4210}h1{line-height:1.2}code{display:block;overflow-wrap:anywhere;background:#f3f5fa;padding:12px;border-radius:8px;font-size:14px}.badge{color:#596a85} @media(max-width:700px){main{margin:20px;padding:24px}}</style></head>
+<body><main><p class="badge">PERSONAL VIEWING DASHBOARD</p><h1>Sandy's Trakt connection</h1>
+<p id="status" role="status">Connection page ready. Trakt app registration is the next step.</p>
+<p>Register this exact redirect URI:</p><code>https://6sgnb64sdb-boop.github.io/trakt-dashboard/</code>
+<p>Allowed origin:</p><code>https://6sgnb64sdb-boop.github.io</code>
+<p>This page does not connect to your account yet. Sign-in will be enabled after the application's Client ID is configured.</p>
+<p>The dashboard will calculate shows started, unwatched aired episodes and remaining viewing time. No account tokens or viewing history are stored in this public repository.</p>
+</main><script>
+const query=new URLSearchParams(location.search);
+if(query.has('code')||query.has('error')){
+ history.replaceState(null,'',location.pathname);
+ document.getElementById('status').textContent='Sign-in is not configured yet. The callback parameters have been removed from the address bar. Return to setup before trying again.';
+}
+</script></body></html>
