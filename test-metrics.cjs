@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const {calculateShow} = require('./metrics-core.js');
+const now = Date.parse('2026-10-06T00:00:00Z');
+const seasons=[{number:0,episodes:[{number:1,first_aired:'2020-01-01',runtime:20}]},{number:1,episodes:[{number:1,first_aired:'2020-01-01',runtime:40},{number:2,first_aired:'2020-01-02',runtime:45},{number:2,first_aired:'2020-01-02',runtime:45},{number:3,first_aired:'2020-01-03',runtime:null},{number:4,first_aired:'2027-01-01',runtime:50},{number:5,first_aired:null,runtime:50}]}];
+const progress={seasons:[{number:0,episodes:[{number:1,plays:1}]},{number:1,episodes:[{number:1,plays:3},{number:1,plays:3}]}]};
+assert.deepEqual(calculateShow(seasons,progress,{now}),{watched:1,aired:3,remaining:2,minutes:45,missingRuntime:1,unknownDate:1,future:1});
+assert.equal(calculateShow(seasons,progress,{now,specials:true}).watched,2);
+assert.equal(calculateShow(seasons,null,{now}).remaining,3);
+assert.equal(calculateShow([],null,{now}).minutes,0);
+assert.throws(()=>calculateShow([{number:1}],null,{now}),/metadata/);
+assert.throws(()=>calculateShow(seasons,{}, {now}),/progress/);
+console.log('Metric calculation checks passed.');
