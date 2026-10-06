@@ -2,11 +2,11 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src https://auth.trakt.tv https://api.trakt.tv; base-uri 'none'; form-action 'none'">
 <title>Sandy's Trakt connection</title><style>body{margin:0;background:#f3f5fa;color:#202c42;font:17px/1.6 system-ui,sans-serif}main{max-width:1100px;margin:8vh auto;padding:36px;background:white;border-radius:18px;box-shadow:0 12px 45px #202c4210}h1{line-height:1.2}button{padding:12px 20px;border:0;border-radius:8px;background:#345bd4;color:white;font:inherit;cursor:pointer;margin:6px 8px 6px 0}button.secondary{background:#e8edf7;color:#202c42}button:disabled{opacity:.5;cursor:wait}.badge{color:#596a85}small{display:block;color:#596a85}@media(max-width:700px){main{margin:20px;padding:24px}}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:24px 0}.card{padding:16px;background:#f3f5fa;border-radius:10px}.card strong{display:block;font-size:25px}.card span{font-size:14px}label{display:inline-block;margin:8px 16px 8px 0}.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;text-align:left}td,th{padding:10px;border-bottom:1px solid #e8edf7}input[type=search]{padding:10px;font:inherit;max-width:100%;box-sizing:border-box}#detail{font-size:14px;color:#596a85}</style></head>
-<body><main><p class="badge">PERSONAL VIEWING DASHBOARD · DASHBOARD VERSION 4</p><h1>Sandy's Trakt connection</h1>
+<body><main><p class="badge">PERSONAL VIEWING DASHBOARD · DASHBOARD VERSION 5</p><h1>Sandy's Trakt connection</h1>
 <p id="status" role="status">Ready to connect. Trakt will ask you to authorize this application.</p>
 <button id="connect">Connect to Trakt</button><button class="secondary" id="disconnect">Clear connection</button>
 <p>Use this same browser tab through sign-in. Your Trakt password is entered only on Trakt.</p>
-<small>The connection is held in this browser tab for setup. No tokens or viewing history are sent to GitHub. Refresh metrics whenever you want an update. Background updates are not enabled yet.</small><hr><h2>Your viewing backlog</h2><p><label><input id="watchlist" type="checkbox" checked> Include watchlisted shows</label><label><input id="specials" type="checkbox"> Include specials</label></p><button id="load">Load viewing metrics</button><button id="retry" class="secondary" hidden>Retry failed shows</button><div class="cards" id="summary"></div><p id="detail"></p><label>Find a show <input id="search" type="search" placeholder="Show title"></label><div class="tablewrap"><table><thead><tr><th>Show</th><th>Watched</th><th>Remaining aired</th><th>Remaining time</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div></main><script src="metrics-core.js"></script><script>'use strict';
+<small>The connection is held in this browser tab for setup. No tokens or viewing history are sent to GitHub. Refresh metrics whenever you want an update. Background updates are not enabled yet.</small><hr><h2>Your viewing backlog</h2><p><label><input id="watchlist" type="checkbox" checked> Include watchlisted shows</label><label><input id="specials" type="checkbox"> Include specials</label><label><input id="uptodate" type="checkbox"> Include up-to-date shows</label></p><button id="load">Load viewing metrics</button><button id="retry" class="secondary" hidden>Retry failed shows</button><div class="cards" id="summary"></div><p id="detail"></p><label>Find a show <input id="search" type="search" placeholder="Show title"></label><div class="tablewrap"><table><thead><tr><th>Show</th><th>Watched</th><th>Remaining aired</th><th>Remaining time</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div></main><script src="metrics-core.js"></script><script>'use strict';
 const CLIENT_ID='Y0oIhAuJeJ4Y1A-fb3qMoX0zTyOXtT9ISktJJEOe2mE';
 const REDIRECT='https://6sgnb64sdb-boop.github.io/trakt-dashboard/';
 const KEY='sandy-trakt-pkce-v1';
@@ -78,7 +78,23 @@ const detail=document.getElementById('detail');
 const retryButton=document.getElementById('retry');
 const SNAPSHOT='sandy-trakt-results-v1';
 let results=[], complete=false, loadGeneration=0;
-let loadedScope={specials:false,watchlist:true};
+let loadedScope={specials:false,watchlist:true,upToDate:false};
+let skippedUpToDate=0;
+function canSkipUpToDate(entry, specials){
+ // Bulk aired_episodes counts regular episodes. Missing counts or specials need details.
+ if(specials || !entry?.progress || !Number.isInteger(entry.show?.aired_episodes) || entry.show.aired_episodes<=0)return false;
+ const watched=new Set();
+ for(const season of entry.progress.seasons||[]){
+  if(!Number.isInteger(season.number)||season.number<0||!Array.isArray(season.episodes))return false;
+  if(season.number===0)continue;
+  for(const ep of season.episodes){
+   if(!Number.isInteger(ep.number)||ep.number<=0)return false;
+   if(ep.plays>0||ep.completed===true)watched.add(season.number+':'+ep.number);
+  }
+ }
+ return watched.size===entry.show.aired_episodes;
+}
+
 const metadataCache=new Map();
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function getSession(){try{return JSON.parse(sessionStorage.getItem(SESSION)||'null');}catch{return null;}}
@@ -134,7 +150,7 @@ function render(){
   ['Shows in scope',results.length],['Shows started',success.filter(r=>r.metrics.watched>0).length],
   ['Episodes watched',total.watched],['Episodes remaining',total.remaining],
   ['Remaining time'+(total.missingRuntime?' (known runtime)':''),duration(total.minutes)],
-  ['Started shows up to date',success.filter(r=>r.metrics.watched>0&&r.metrics.aired>0&&!r.metrics.remaining&&!r.metrics.unknownDate).length]
+  [loadedScope.upToDate?'Started shows up to date':'Up-to-date shows excluded',loadedScope.upToDate?success.filter(r=>r.metrics.watched>0&&r.metrics.aired>0&&!r.metrics.remaining&&!r.metrics.unknownDate).length:skippedUpToDate]
  ];
  for(const [label,value] of cards){const card=document.createElement('div');card.className='card';const strong=document.createElement('strong');strong.textContent=value.toLocaleString();const text=document.createElement('span');text.textContent=label;card.append(strong,text);summary.append(card);}
  detail.textContent=(failures?'PARTIAL RESULTS: '+failures+' show(s) could not load. Totals include successful shows only. ':'')+
@@ -142,7 +158,7 @@ function render(){
  (total.unknownDate?total.unknownDate+' unwatched episode(s) have no air date and are excluded from the aired backlog. ':'')+
  'Scope: watched shows'+(loadedScope.watchlist?' plus show-level watchlist':'')+
  '; '+(loadedScope.specials?'including specials':'excluding specials')+
- '. Future episodes are excluded. Dropped/hidden shows remain included if they are in this scope. Rewatches count once. Aired does not guarantee Australian streaming availability.';
+ (loadedScope.upToDate?'; including up-to-date shows':'; excluding up-to-date shows ('+skippedUpToDate+' skipped)')+'. Counts apply to the included shows only. Future episodes are excluded. Dropped/hidden shows remain included if they are in this scope. Rewatches count once. Aired does not guarantee Australian streaming availability.';
  if(failures){const reasons=new Map();for(const row of results.filter(r=>!r.metrics)){const reason=row.error||'Unknown failure';reasons.set(reason,(reasons.get(reason)||0)+1);}detail.textContent+=' Failure details: '+Array.from(reasons,([reason,count])=>count+' × '+reason).join('; ');}
  const query=document.getElementById('search').value.toLowerCase();
  const selected=results.filter(r=>r.title.toLowerCase().includes(query));
@@ -158,12 +174,13 @@ loadButton.addEventListener('click',async()=>{
  const session=getSession();
  if(!session?.access_token){status.textContent='Connect to Trakt first.';return;}
  const generation=++loadGeneration;
- complete=false;results=[];metadataCache.clear();summary.replaceChildren();rowsElement.replaceChildren();detail.textContent='';
+ complete=false;results=[];skippedUpToDate=0;metadataCache.clear();summary.replaceChildren();rowsElement.replaceChildren();detail.textContent='';
  loadButton.disabled=true;retryButton.disabled=true;
- document.getElementById('specials').disabled=true;document.getElementById('watchlist').disabled=true;
+ document.getElementById('uptodate').disabled=true;document.getElementById('specials').disabled=true;document.getElementById('watchlist').disabled=true;
  const specials=document.getElementById('specials').checked;
  const withWatchlist=document.getElementById('watchlist').checked;
- loadedScope={specials,watchlist:withWatchlist};
+ const upToDate=document.getElementById('uptodate').checked;
+ loadedScope={specials,watchlist:withWatchlist,upToDate};
  try{
   status.textContent='Reading all watched shows…';
   const watched=await pages('/sync/watched/shows?extended=progress',session.access_token);
@@ -178,6 +195,7 @@ loadButton.addEventListener('click',async()=>{
    const watchlist=await pages('/sync/watchlist/shows',session.access_token);
    for(const entry of watchlist){if(!entry.show?.ids?.trakt)throw new Error('Watchlist response is missing show IDs.');if(!library.has(entry.show.ids.trakt))library.set(entry.show.ids.trakt,{show:entry.show,progress:null});}
   }
+  if(!upToDate){for(const [id,entry] of library){if(canSkipUpToDate(entry,specials)){library.delete(id);skippedUpToDate++;}}}
   const now=Date.now();let index=0;
   for(const [id,entry] of library){
    if(generation!==loadGeneration)return;
@@ -189,18 +207,19 @@ loadButton.addEventListener('click',async()=>{
     row.metrics=TraktMetrics.calculateShow(seasons,entry.progress,{now,specials});
    }catch(e){row.error=e.message||'Show could not load';}
    if(generation!==loadGeneration)return;
+   if(!upToDate && row.metrics && row.metrics.watched>0 && row.metrics.remaining===0 && row.metrics.unknownDate===0){skippedUpToDate++;continue;}
    results.push(row);
   }
   complete=true;render();saveSnapshot();
   status.textContent='Metrics loaded at '+new Date().toLocaleString('en-AU',{timeZone:'Australia/Brisbane'})+' Brisbane time.'+(results.some(r=>!r.metrics)?' Some shows need another attempt.':'');
  }catch(e){if(generation===loadGeneration)status.textContent=e.message||'Metrics could not load. Please try again.';}
  finally{
-  loadButton.disabled=false;retryButton.disabled=false;document.getElementById('specials').disabled=false;document.getElementById('watchlist').disabled=false;
+  loadButton.disabled=false;retryButton.disabled=false;document.getElementById('uptodate').disabled=false;document.getElementById('specials').disabled=false;document.getElementById('watchlist').disabled=false;
  }
 });
 document.getElementById('search').addEventListener('input',render);
 document.getElementById('disconnect').addEventListener('click',()=>{
- loadGeneration++;results=[];complete=false;metadataCache.clear();sessionStorage.removeItem(SNAPSHOT);retryButton.hidden=true;summary.replaceChildren();rowsElement.replaceChildren();detail.textContent='';
+ loadGeneration++;results=[];skippedUpToDate=0;complete=false;metadataCache.clear();sessionStorage.removeItem(SNAPSHOT);retryButton.hidden=true;summary.replaceChildren();rowsElement.replaceChildren();detail.textContent='';
 });
 if(getSession()?.access_token){status.textContent='Your Trakt connection is available in this tab. Click Load viewing metrics.';button.textContent='Reconnect to Trakt';}
 
@@ -208,7 +227,7 @@ if(getSession()?.access_token){status.textContent='Your Trakt connection is avai
 function saveSnapshot(){
  try{
   const safeRows=results.map(row=>row.metrics?{title:row.title,id:row.id,metrics:row.metrics}:row);
-  sessionStorage.setItem(SNAPSHOT,JSON.stringify({rows:safeRows,scope:loadedScope,at:Date.now()}));
+  sessionStorage.setItem(SNAPSHOT,JSON.stringify({rows:safeRows,scope:loadedScope,skippedUpToDate,at:Date.now()}));
  }catch{} // Storage limits do not prevent displaying results.
 }
 retryButton.addEventListener('click',async()=>{
@@ -218,7 +237,7 @@ retryButton.addEventListener('click',async()=>{
  if(failed.some(row=>!row.entry)){status.textContent='Load viewing metrics again to retrieve missing show details.';return;}
  const generation=++loadGeneration;
  loadButton.disabled=true;retryButton.disabled=true;
- document.getElementById('specials').disabled=true;document.getElementById('watchlist').disabled=true;
+ document.getElementById('uptodate').disabled=true;document.getElementById('specials').disabled=true;document.getElementById('watchlist').disabled=true;
  try{
   for(let i=0;i<failed.length;i++){
    if(generation!==loadGeneration)return;
@@ -230,18 +249,20 @@ retryButton.addEventListener('click',async()=>{
     delete row.error;
    }catch(error){row.error=error.message||'Request could not complete';}
    if(generation!==loadGeneration)return;
+   if(!loadedScope.upToDate && row.metrics && row.metrics.watched>0 && row.metrics.remaining===0 && row.metrics.unknownDate===0){results=results.filter(r=>r!==row);skippedUpToDate++;}
    render();saveSnapshot();
   }
   status.textContent=results.some(row=>!row.metrics)?'Retry finished. Some shows still could not load; successful results have been kept.':'All shows loaded successfully.';
  }finally{
   loadButton.disabled=false;retryButton.disabled=false;
-  document.getElementById('specials').disabled=false;document.getElementById('watchlist').disabled=false;
+  document.getElementById('uptodate').disabled=false;document.getElementById('specials').disabled=false;document.getElementById('watchlist').disabled=false;
  }
 });
 try{
  const snapshot=JSON.parse(sessionStorage.getItem(SNAPSHOT)||'null');
  if(getSession()?.access_token && snapshot && Array.isArray(snapshot.rows) && snapshot.scope){
-  results=snapshot.rows;loadedScope=snapshot.scope;complete=true;
+  results=snapshot.rows;loadedScope={...snapshot.scope,upToDate:snapshot.scope.upToDate??true};skippedUpToDate=snapshot.skippedUpToDate||0;complete=true;
+  document.getElementById('uptodate').checked=loadedScope.upToDate;
   document.getElementById('specials').checked=loadedScope.specials;
   document.getElementById('watchlist').checked=loadedScope.watchlist;
   render();status.textContent='Saved results from '+new Date(snapshot.at).toLocaleString('en-AU',{timeZone:'Australia/Brisbane'})+' Brisbane time. Refresh metrics for current totals.';
