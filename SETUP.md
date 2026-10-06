@@ -1,19 +1,19 @@
-# Sandy's Trakt dashboard — setup
+# Trakt dashboard setup
 
-Private project for viewing statistics. No Trakt account has been connected yet.
+This repository is now public. Keep tokens, secrets and viewing history outside it.
 
-## Metrics
+Enable GitHub Pages in Settings > Pages: Deploy from a branch, main, /(root), Save.
 
-Initial figures: unique shows started, unique episodes watched, unwatched aired episodes, and remaining runtime by show. Exclude specials by default; future episodes do not count. Watchlisted but unstarted shows are a separate optional backlog. Missing runtimes must be shown rather than treated as zero.
+Once the page loads, register this redirect URI:
+https://6sgnb64sdb-boop.github.io/trakt-dashboard/
 
-## Authentication
+Allowed origin:
+https://6sgnb64sdb-boop.github.io
 
-Trakt supports device-code authentication for command-line tools. The app registration form still needs a valid HTTPS redirect address. Do not use localhost or an address we do not control. A private GitHub repository is not itself an OAuth callback hosting service.
+The connection landing page is ready. Sign-in will be implemented with PKCE after the Client ID is configured; no client secret belongs in browser code.
 
-The next setup step is to establish the callback hosting address or confirm Trakt's registration requirements for a device-only app. Then register the application and test authentication.
+Initial metrics: unique shows started, unique episodes watched, unwatched aired episodes and remaining runtime by show. Exclude specials by default and exclude future episodes. Label missing runtimes and estimates. Watchlisted but unstarted shows can be added separately.
 
-Never commit client secrets, access tokens, refresh tokens or raw account data. Refresh tokens are single-use, so replacement tokens must be saved immediately. Scheduled updates need persistent secure token storage, including saving rotated tokens.
+Refresh tokens are single-use. Automatic updates will require secure persistent storage for rotated tokens and a private destination for results.
 
-## Status
-
-Repository verified private. App registration, authentication, metric validation and scheduled updates are pending.
+Status: Pages activation, Trakt registration, authorization and metrics are pending. No account data has been retrieved.
