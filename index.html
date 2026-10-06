@@ -1,19 +1,72 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-<title>Sandy's Trakt connection</title>
-<style>body{margin:0;background:#f3f5fa;color:#202c42;font:17px/1.6 system-ui,sans-serif}main{max-width:650px;margin:8vh auto;padding:36px;background:white;border-radius:18px;box-shadow:0 12px 45px #202c4210}h1{line-height:1.2}code{display:block;overflow-wrap:anywhere;background:#f3f5fa;padding:12px;border-radius:8px;font-size:14px}.badge{color:#596a85} @media(max-width:700px){main{margin:20px;padding:24px}}</style></head>
-<body><main><p class="badge">PERSONAL VIEWING DASHBOARD</p><h1>Sandy's Trakt connection</h1>
-<p id="status" role="status">Connection page ready. Trakt app registration is the next step.</p>
-<p>Register this exact redirect URI:</p><code>https://6sgnb64sdb-boop.github.io/trakt-dashboard/</code>
-<p>Allowed origin:</p><code>https://6sgnb64sdb-boop.github.io</code>
-<p>This page does not connect to your account yet. Sign-in will be enabled after the application's Client ID is configured.</p>
-<p>The dashboard will calculate shows started, unwatched aired episodes and remaining viewing time. No account tokens or viewing history are stored in this public repository.</p>
-</main><script>
-const query=new URLSearchParams(location.search);
-if(query.has('code')||query.has('error')){
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src https://auth.trakt.tv https://api.trakt.tv; base-uri 'none'; form-action 'none'">
+<title>Sandy's Trakt connection</title><style>body{margin:0;background:#f3f5fa;color:#202c42;font:17px/1.6 system-ui,sans-serif}main{max-width:650px;margin:8vh auto;padding:36px;background:white;border-radius:18px;box-shadow:0 12px 45px #202c4210}h1{line-height:1.2}button{padding:12px 20px;border:0;border-radius:8px;background:#345bd4;color:white;font:inherit;cursor:pointer;margin:6px 8px 6px 0}button.secondary{background:#e8edf7;color:#202c42}button:disabled{opacity:.5;cursor:wait}.badge{color:#596a85}small{display:block;color:#596a85}@media(max-width:700px){main{margin:20px;padding:24px}}</style></head>
+<body><main><p class="badge">PERSONAL VIEWING DASHBOARD · CONNECTION VERSION 2</p><h1>Sandy's Trakt connection</h1>
+<p id="status" role="status">Ready to connect. Trakt will ask you to authorize this application.</p>
+<button id="connect">Connect to Trakt</button><button class="secondary" id="disconnect">Clear connection</button>
+<p>Use this same browser tab through sign-in. Your Trakt password is entered only on Trakt.</p>
+<small>The connection is held in this browser tab for setup. No tokens or viewing history are sent to GitHub. Automatic updates and viewing metrics are not enabled yet.</small></main><script>'use strict';
+const CLIENT_ID='Y0oIhAuJeJ4Y1A-fb3qMoX0zTyOXtT9ISktJJEOe2mE';
+const REDIRECT='https://6sgnb64sdb-boop.github.io/trakt-dashboard/';
+const KEY='sandy-trakt-pkce-v1';
+const SESSION='sandy-trakt-session-v1';
+const status=document.getElementById('status');
+const button=document.getElementById('connect');
+const b64=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const random=()=>b64(crypto.getRandomValues(new Uint8Array(32)));
+button.addEventListener('click',async()=>{
+ button.disabled=true;
+ try{
+  if(location.href.split('?')[0].split('#')[0]!==REDIRECT) throw new Error('Open the registered connection-page address before signing in.');
+  const verifier=random(), state=random();
+  const challenge=b64(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))));
+  sessionStorage.setItem(KEY,JSON.stringify({verifier,state,created:Date.now()}));
+  const url=new URL('https://auth.trakt.tv/oauth/authorize');
+  url.search=new URLSearchParams({response_type:'code',client_id:CLIENT_ID,redirect_uri:REDIRECT,state,code_challenge:challenge,code_challenge_method:'S256'});
+  location.assign(url.href);
+ }catch(e){status.textContent=e.message||'Unable to start sign-in.';button.disabled=false;}
+});
+async function start(){
+ const query=new URLSearchParams(location.search);
+ if(!query.has('code')&&!query.has('error'))return;
  history.replaceState(null,'',location.pathname);
- document.getElementById('status').textContent='Sign-in is not configured yet. The callback parameters have been removed from the address bar. Return to setup before trying again.';
+ button.disabled=true;
+ try{
+  const saved=sessionStorage.getItem(KEY);
+  sessionStorage.removeItem(KEY);
+  const pending=saved?JSON.parse(saved):null;
+  if(!pending||!query.get('state')||query.get('state')!==pending.state||Date.now()-pending.created>15*60*1000) throw new Error('Sign-in could not be verified or has expired. Please connect again in this tab.');
+  if(query.has('error'))throw new Error('Trakt authorization was cancelled or declined. You can connect again.');
+  if(!query.get('code'))throw new Error('Trakt did not return an authorization code.');
+  status.textContent='Completing Trakt sign-in…';
+  const response=await fetch('https://auth.trakt.tv/oauth/token',{
+   method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({code:query.get('code'),client_id:CLIENT_ID,redirect_uri:REDIRECT,grant_type:'authorization_code',code_verifier:pending.verifier}),
+   signal:AbortSignal.timeout(30000)
+  });
+  if(!response.ok)throw new Error('Trakt token exchange failed (HTTP '+response.status+'). Please connect again.');
+  const token=await response.json();
+  if(typeof token.access_token!=='string'||typeof token.refresh_token!=='string')throw new Error('Trakt returned an unexpected sign-in response.');
+  sessionStorage.setItem(SESSION,JSON.stringify(token));
+  status.textContent='Connected to Trakt. Checking account access…';
+  const check=await fetch('https://api.trakt.tv/users/settings',{
+   headers:{'trakt-api-key':CLIENT_ID,'trakt-api-version':'2',Authorization:'Bearer '+token.access_token},
+   signal:AbortSignal.timeout(30000)
+  });
+  if(!check.ok)throw new Error('Sign-in succeeded, but the account check failed (HTTP '+check.status+').');
+  const account=await check.json();
+  if(!account.user)throw new Error('Account check returned an unexpected response.');
+  status.textContent='Connected successfully — Trakt account access confirmed. Your viewing metrics are the next step.';
+  button.textContent='Reconnect to Trakt';
+ }catch(e){
+  status.textContent=e instanceof TypeError?'Connection could not complete. Check that Trakt Allowed origins contains https://6sgnb64sdb-boop.github.io, then try again.':(e.message||'Connection could not complete.');
+ }finally{button.disabled=false;}
 }
+document.getElementById('disconnect').addEventListener('click',()=>{
+ sessionStorage.removeItem(KEY);sessionStorage.removeItem(SESSION);
+ status.textContent='Connection cleared from this browser tab. To revoke the app entirely, use your Trakt account settings.';
+ button.textContent='Connect to Trakt';
+});
+start();
 </script></body></html>
