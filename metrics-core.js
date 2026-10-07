@@ -31,5 +31,27 @@ function calculateShow(seasons, progress, options = {}) {
  }
  return out;
 }
-if(typeof module !== 'undefined') module.exports = {calculateShow};
-else globalThis.TraktMetrics = {calculateShow};
+
+function nextUnwatchedEpisode(seasons, progress, options = {}) {
+ const specials=options.specials??false;
+ if(!Array.isArray(seasons))throw new Error('Missing season metadata');
+ const watched=new Set();
+ for(const season of progress?.seasons||[]){
+  for(const ep of season.episodes||[])if(ep.plays>0||ep.completed===true)watched.add(season.number+':'+ep.number);
+ }
+ const candidates=[];
+ for(const season of seasons){
+  if(!specials&&season.number===0)continue;
+  if(!Array.isArray(season.episodes))throw new Error('Episode metadata not included');
+  for(const ep of season.episodes){
+   if(!Number.isInteger(ep.number)||!Number.isInteger(season.number))continue;
+   if(watched.has(season.number+':'+ep.number))continue;
+   candidates.push({season:season.number,number:ep.number,title:ep.title||'Untitled episode',first_aired:ep.first_aired||null});
+  }
+ }
+ candidates.sort((a,b)=>a.season-b.season||a.number-b.number);
+ return candidates[0]||null;
+}
+
+if(typeof module !== 'undefined') module.exports = {calculateShow,nextUnwatchedEpisode};
+else globalThis.TraktMetrics = {calculateShow,nextUnwatchedEpisode};
